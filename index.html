@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <title>Italy Flood Vulnerability Map — Dashboard</title>
 
 <!-- ArcGIS Maps SDK for JavaScript (dark theme) -->
@@ -31,12 +31,14 @@
   }
 
   * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; background: var(--ink); }
+  html, body { margin: 0; height: 100%; background: var(--ink); overscroll-behavior: none; }
   body { font-family: "IBM Plex Sans", system-ui, sans-serif; color: var(--text); overflow: hidden; }
 
-  #app { display: grid; grid-template-rows: 56px 1fr; height: 100vh; }
+  #app { display: grid; grid-template-rows: 56px 1fr; height: 100vh; height: 100dvh; }
   #main { position: relative; display: grid; grid-template-columns: var(--panel-w) 1fr; min-height: 0; }
   #viewDiv { width: 100%; height: 100%; background: var(--ink); }
+  #scrim { display: none; }
+  #panelClose { display: none; }
 
   header {
     display: flex; align-items: center; gap: 14px; padding: 0 18px;
@@ -212,13 +214,32 @@
   @media (max-width: 860px) {
     #main { grid-template-columns: 1fr; }
     #panel {
-      position: absolute; z-index: 40; inset: 0 auto 0 0; width: min(86vw, var(--panel-w));
+      position: absolute; z-index: 41; inset: 0 auto 0 0; width: min(88vw, var(--panel-w));
       transform: translateX(-102%); transition: transform .22s ease;
       box-shadow: 8px 0 30px rgba(0,0,0,.5);
+      padding-bottom: calc(28px + env(safe-area-inset-bottom));
     }
     #panel.open { transform: translateX(0); }
-    #panelToggle { display: inline-block; }
+    #scrim {
+      position: absolute; inset: 0; z-index: 40; background: rgba(4,9,14,.55);
+      opacity: 0; pointer-events: none; transition: opacity .22s ease;
+    }
+    #scrim.on { display: block; opacity: 1; pointer-events: auto; }
+    #panelToggle {
+      display: inline-block;
+      background: var(--water-deep); border-color: var(--water-deep); color: #eafbff; font-weight: 600;
+    }
+    #panelClose {
+      display: flex; align-items: center; justify-content: center;
+      position: sticky; top: 0; z-index: 2; margin: -6px -6px 10px auto;
+      width: 34px; height: 34px; border-radius: 50%;
+      background: var(--surface-2); border: 1px solid var(--line); color: var(--text);
+      font-size: 1.05rem; line-height: 1; cursor: pointer;
+    }
+    header { padding: 0 12px; gap: 10px; }
+    header h1 { font-size: .92rem; }
     header .sub { display: none; }
+    .hbtn { padding: 7px 10px; font-size: .78rem; }
   }
 </style>
 </head>
@@ -237,13 +258,16 @@
       <h1 id="appTitle">Italy Flood Vulnerability Map</h1>
     </div>
     <div class="spacer"></div>
-    <button class="hbtn" id="panelToggle" aria-controls="panel">Panels</button>
+    <button class="hbtn" id="panelToggle" aria-controls="panel" aria-expanded="false">Layers ☰</button>
     <button class="hbtn" id="aboutBtn">About this map</button>
     <button class="hbtn primary" id="resetBtn" title="Return to the full-Italy landing view">Reset view</button>
   </header>
 
   <div id="main">
+    <div id="scrim" aria-hidden="true"></div>
     <aside id="panel" aria-label="Dashboard controls">
+
+      <button id="panelClose" aria-label="Close panel">✕</button>
 
       <div id="shareWarn" role="alert"></div>
 
@@ -656,7 +680,17 @@ require([
         view.goTo({ center: saved.c, zoom: saved.z }, { duration: 0 }).catch(() => {});
       } else {
         view.goTo(landingExtent, { duration: 0 }).catch(() => {});
+        /* Phones often finish laying out AFTER the first fit — re-fit once
+           shortly after, unless the user has already started interacting */
+        let userMoved = false;
+        view.on("pointer-down", () => { userMoved = true; });
+        setTimeout(() => { if (!userMoved) view.goTo(landingExtent, { duration: 0 }).catch(() => {}); }, 700);
       }
+
+      /* Keep users near Italy: no endless world panning, no zooming out
+         past the country view. Street-level zoom-in stays unrestricted. */
+      view.constraints.geometry = landingExtent.clone().expand(1.6);
+      view.constraints.minZoom = 5;
 
       loader.classList.add("hide");
       setTimeout(() => loader.remove(), 600);
@@ -1302,7 +1336,7 @@ require([
       status.classList.add("on");
       status.innerHTML = `Zoomed to <strong>${escapeHtml(String(place.display_name || "").split(",")[0])}</strong> in <strong>${escapeHtml(String(regionName))}</strong> — its building layer is on. Select any footprint for details.`;
     }
-    if (window.matchMedia("(max-width: 860px)").matches) $("panel").classList.remove("open");
+    if (window.matchMedia("(max-width: 860px)").matches) setPanel(false);
   }
 
   /* ================= reset ================= */
@@ -1321,7 +1355,14 @@ require([
     view.goTo(landingExtent, { duration: 900 }).catch(() => {});
   });
 
-  $("panelToggle").addEventListener("click", () => $("panel").classList.toggle("open"));
+  const setPanel = (open) => {
+    $("panel").classList.toggle("open", open);
+    $("scrim").classList.toggle("on", open);
+    $("panelToggle").setAttribute("aria-expanded", String(open));
+  };
+  $("panelToggle").addEventListener("click", () => setPanel(!$("panel").classList.contains("open")));
+  $("panelClose").addEventListener("click", () => setPanel(false));
+  $("scrim").addEventListener("click", () => setPanel(false));
 });
 </script>
 </body>
