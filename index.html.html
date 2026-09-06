@@ -1,0 +1,1328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Italy Flood Vulnerability Map — Dashboard</title>
+
+<!-- ArcGIS Maps SDK for JavaScript (dark theme) -->
+<link rel="stylesheet" href="https://js.arcgis.com/4.30/esri/themes/dark/main.css" />
+<script src="https://js.arcgis.com/4.30/"></script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+<style>
+  :root {
+    --ink:        #0c141d;
+    --surface:    #16222e;
+    --surface-2:  #1d2c3b;
+    --line:       #2a3d4f;
+    --text:       #e8eef3;
+    --text-dim:   #9db2c3;
+    --water:      #59c1d8;
+    --water-deep: #2e7f96;
+    --risk:       #e8a13d;
+    --danger:     #e26d5a;
+    --radius: 10px;
+    --panel-w: 350px;
+    font-size: 15px;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--ink); }
+  body { font-family: "IBM Plex Sans", system-ui, sans-serif; color: var(--text); overflow: hidden; }
+
+  #app { display: grid; grid-template-rows: 56px 1fr; height: 100vh; }
+  #main { position: relative; display: grid; grid-template-columns: var(--panel-w) 1fr; min-height: 0; }
+  #viewDiv { width: 100%; height: 100%; background: var(--ink); }
+
+  header {
+    display: flex; align-items: center; gap: 14px; padding: 0 18px;
+    background: linear-gradient(180deg, #14202c, #101a25);
+    border-bottom: 1px solid var(--line);
+  }
+  .mark {
+    width: 30px; height: 30px; flex: 0 0 auto; border-radius: 8px;
+    background: radial-gradient(120% 120% at 20% 15%, var(--water) 0%, var(--water-deep) 55%, #1a4a5c 100%);
+    display: grid; place-items: center; color: #06222c; font-weight: 700;
+  }
+  header h1 { font-size: 1.02rem; font-weight: 600; margin: 0; letter-spacing: .01em; }
+  header .sub { color: var(--text-dim); font-size: .8rem; margin-top: 1px; max-width: 60vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  header .spacer { flex: 1; }
+  .hbtn {
+    font: inherit; font-size: .82rem; font-weight: 500; color: var(--text);
+    background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px;
+    padding: 7px 13px; cursor: pointer;
+  }
+  .hbtn:hover { border-color: var(--water-deep); }
+  .hbtn.primary { background: var(--water-deep); border-color: var(--water-deep); color: #eafbff; }
+  .hbtn:focus-visible { outline: 2px solid var(--water); outline-offset: 2px; }
+
+  #panel {
+    background: var(--surface); border-right: 1px solid var(--line);
+    overflow-y: auto; overscroll-behavior: contain; padding: 14px 14px 28px;
+    scrollbar-width: thin; scrollbar-color: var(--line) transparent;
+  }
+  #panel::-webkit-scrollbar { width: 8px; }
+  #panel::-webkit-scrollbar-thumb { background: var(--line); border-radius: 8px; }
+
+  .section { margin-bottom: 18px; }
+  .section > h2 { font-size: .8rem; font-weight: 600; color: var(--text-dim); margin: 4px 2px 8px; letter-spacing: .02em; }
+  .card { background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; }
+
+  label.field-label { display: block; font-size: .78rem; color: var(--text-dim); margin: 0 0 5px 2px; }
+  select, input[type="search"] {
+    width: 100%; font: inherit; font-size: .88rem; color: var(--text); background: #101a24;
+    border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px;
+  }
+  select:disabled, input:disabled { opacity: .55; }
+  select:focus, input:focus { outline: 2px solid var(--water-deep); outline-offset: 1px; border-color: var(--water-deep); }
+  .hint { font-size: .74rem; color: var(--text-dim); margin: 7px 2px 0; line-height: 1.45; }
+
+  #searchResults { margin-top: 8px; display: none; }
+  #searchResults.open { display: block; }
+  .search-status { display: none; margin: 7px 2px 0; font-size: .76rem; color: var(--text-dim); line-height: 1.4; }
+  .search-status.on { display: block; }
+  .search-status.warn { color: #f3d3a0; }
+  .result-item {
+    width: 100%; text-align: left; font: inherit; font-size: .84rem; color: var(--text);
+    background: #101a24; border: 1px solid var(--line); border-radius: 8px;
+    padding: 8px 10px; margin-top: 6px; cursor: pointer; line-height: 1.35;
+  }
+  .result-item:hover { border-color: var(--water); }
+  .result-item .sub { display: block; color: var(--text-dim); font-size: .74rem; margin-top: 2px; }
+
+  #filterStatus {
+    display: none; margin-top: 10px; font-size: .78rem; color: #bfe9f4;
+    background: rgba(89,193,216,.12); border: 1px solid rgba(89,193,216,.35);
+    border-radius: 8px; padding: 7px 10px; line-height: 1.4;
+  }
+  #filterStatus.on { display: block; }
+
+  /* warning banner for layers that failed to load anonymously */
+  #shareWarn {
+    display: none; margin: 0 0 14px; font-size: .78rem; line-height: 1.5;
+    background: rgba(232,161,61,.1); border: 1px solid rgba(232,161,61,.4);
+    color: #f3d3a0; border-radius: var(--radius); padding: 10px 12px;
+  }
+  #shareWarn.on { display: block; }
+
+  /* ---------- layer list ---------- */
+  .layer-row { display: flex; align-items: center; gap: 9px; padding: 7px 8px; border-radius: 8px; }
+  .layer-row:hover { background: rgba(255,255,255,.035); }
+  .layer-row .name { flex: 1; font-size: .86rem; line-height: 1.3; }
+  .layer-children { margin-left: 20px; border-left: 1px solid var(--line); padding-left: 6px; }
+
+  /* collapsible building group */
+  .lgroup { border: 1px solid var(--line); border-radius: 8px; margin: 4px 0; background: rgba(255,255,255,.02); }
+  .lgroup-head { display: flex; align-items: center; gap: 9px; padding: 8px; cursor: default; }
+  .lgroup-head .gname { flex: 1; font-size: .86rem; font-weight: 600; }
+  .lgroup-head .gcount { color: var(--text-dim); font-weight: 400; font-size: .76rem; }
+  .chev {
+    flex: 0 0 auto; width: 24px; height: 24px; border-radius: 6px; border: 1px solid var(--line);
+    background: transparent; color: var(--text-dim); cursor: pointer; display: grid; place-items: center;
+  }
+  .chev svg { transition: transform .18s; }
+  .lgroup.open .chev svg { transform: rotate(90deg); }
+  .lgroup-body { display: none; padding: 2px 6px 8px; border-top: 1px solid var(--line); }
+  .lgroup.open .lgroup-body { display: block; }
+
+  .toggle { position: relative; width: 32px; height: 18px; flex: 0 0 auto; }
+  .toggle input { position: absolute; inset: 0; opacity: 0; cursor: pointer; margin: 0; }
+  .toggle .track { position: absolute; inset: 0; border-radius: 999px; background: #0e1822; border: 1px solid var(--line); transition: background .15s; }
+  .toggle .knob { position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--text-dim); transition: transform .15s, background .15s; }
+  .toggle input:checked + .track { background: var(--water-deep); border-color: var(--water-deep); }
+  .toggle input:checked + .track + .knob { transform: translateX(14px); background: #eafbff; }
+  .toggle input:focus-visible + .track { outline: 2px solid var(--water); outline-offset: 2px; }
+
+  .info-btn {
+    flex: 0 0 auto; width: 22px; height: 22px; border-radius: 50%;
+    border: 1px solid var(--line); background: transparent; color: var(--text-dim);
+    font: inherit; font-size: .72rem; font-weight: 600; cursor: pointer; line-height: 1;
+  }
+  .info-btn:hover { color: var(--water); border-color: var(--water-deep); }
+
+  #legendWrap .esri-legend { background: transparent; color: var(--text); padding: 2px 0 0; }
+  #legendDiv .esri-legend__message { display: none; }   /* replaced by our own empty-state note */
+  .legend-empty { display: none; font-size: .78rem; color: var(--text-dim); line-height: 1.5; padding: 4px 2px; }
+  .legend-empty.on { display: block; }
+  /* hand-authored legends for factor rasters */
+  .clegend { padding: 8px 4px 12px; border-bottom: 1px dashed var(--line); }
+  .clegend h4 { margin: 0 0 8px; font-size: .84rem; font-weight: 600; }
+  .clegend .ramp { height: 12px; border-radius: 6px; border: 1px solid var(--line); }
+  .clegend .ramp-labels { display: flex; justify-content: space-between; font-size: .74rem; color: var(--text-dim); margin-top: 4px; }
+  .clegend .cls { display: flex; align-items: center; gap: 8px; margin: 4px 0; font-size: .8rem; color: var(--text-dim); }
+  .clegend .swatch { width: 16px; height: 12px; border-radius: 3px; border: 1px solid var(--line); flex: 0 0 auto; }
+  .clegend .note { margin-top: 7px; font-size: .74rem; color: var(--text-dim); line-height: 1.45; font-style: italic; }
+  #legendWrap .esri-widget { font-family: "IBM Plex Sans", sans-serif; }
+  #legendWrap .esri-legend__service { padding: 8px 4px 12px; border-bottom: 1px dashed var(--line); }
+  #legendWrap .esri-legend__service:last-child { border-bottom: none; }
+  #legendWrap .esri-legend__layer-caption, #legendWrap .esri-legend__service-label { color: var(--text); font-weight: 600; font-size: .84rem; }
+  #legendWrap .esri-legend__layer-cell--info { color: var(--text-dim); font-size: .8rem; }
+
+  .modal-backdrop {
+    position: fixed; inset: 0; background: rgba(4,9,14,.66);
+    display: none; align-items: center; justify-content: center; z-index: 60; padding: 24px;
+  }
+  .modal-backdrop.open { display: flex; }
+  .modal {
+    width: min(620px, 100%); max-height: 82vh; overflow-y: auto;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+    padding: 22px 24px 26px; scrollbar-width: thin;
+  }
+  .modal h3 { margin: 0 0 4px; font-size: 1.05rem; }
+  .modal .modal-sub { color: #c9d8e4; font-size: .97rem; line-height: 1.55; margin-bottom: 14px; }
+  .modal .body { font-size: .89rem; line-height: 1.6; color: #d5e1ea; }
+  .modal .body h4 { margin: 18px 0 6px; font-size: .84rem; font-weight: 600; color: var(--water); letter-spacing: .02em; text-transform: uppercase; }
+  .modal .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+  .modal .tagchip {
+    font-size: .74rem; color: #bfe9f4; background: rgba(89,193,216,.12);
+    border: 1px solid rgba(89,193,216,.35); border-radius: 999px; padding: 3px 10px;
+  }
+  .modal .body img { max-width: 100%; height: auto; border-radius: 8px; }
+  .modal .body a { color: var(--water); }
+  .modal .close-row { display: flex; justify-content: flex-end; margin-top: 18px; }
+
+  #loader {
+    position: fixed; inset: 0; z-index: 80; background: var(--ink);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+    transition: opacity .4s;
+  }
+  #loader.hide { opacity: 0; pointer-events: none; }
+  .ripple { width: 46px; height: 46px; border-radius: 50%; border: 3px solid var(--water-deep); border-top-color: var(--water); animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .refresh-spin { display: inline-block; animation: spin .8s linear; }
+  @media (prefers-reduced-motion: reduce) { .ripple { animation: none; } }
+  #loader p { color: var(--text-dim); font-size: .85rem; margin: 0; }
+  #loadError {
+    display: none; max-width: 520px; text-align: left; background: var(--surface-2);
+    border: 1px solid var(--danger); border-radius: 12px; padding: 18px 20px;
+    font-size: .86rem; line-height: 1.55;
+  }
+  #loadError ol { margin: 8px 0 0 18px; padding: 0; }
+  #loadError li { margin-bottom: 6px; }
+
+  .esri-view { font-family: "IBM Plex Sans", sans-serif; }
+  .esri-popup__main-container, .esri-popup .esri-widget { font-family: "IBM Plex Sans", sans-serif; }
+  .esri-view .esri-attribution { background: rgba(12,20,29,.75); color: var(--text-dim); }
+
+  #panelToggle { display: none; }
+  @media (max-width: 860px) {
+    #main { grid-template-columns: 1fr; }
+    #panel {
+      position: absolute; z-index: 40; inset: 0 auto 0 0; width: min(86vw, var(--panel-w));
+      transform: translateX(-102%); transition: transform .22s ease;
+      box-shadow: 8px 0 30px rgba(0,0,0,.5);
+    }
+    #panel.open { transform: translateX(0); }
+    #panelToggle { display: inline-block; }
+    header .sub { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div id="loader">
+  <div class="ripple" aria-hidden="true"></div>
+  <p id="loaderMsg">Loading flood vulnerability webmap…</p>
+  <div id="loadError"></div>
+</div>
+
+<div id="app">
+  <header>
+    <div class="mark" aria-hidden="true">≈</div>
+    <div>
+      <h1 id="appTitle">Italy Flood Vulnerability Map</h1>
+    </div>
+    <div class="spacer"></div>
+    <button class="hbtn" id="panelToggle" aria-controls="panel">Panels</button>
+    <button class="hbtn" id="aboutBtn">About this map</button>
+    <button class="hbtn primary" id="resetBtn" title="Return to the full-Italy landing view">Reset view</button>
+  </header>
+
+  <div id="main">
+    <aside id="panel" aria-label="Dashboard controls">
+
+      <div id="shareWarn" role="alert"></div>
+
+      <div class="section">
+        <h2>Find buildings</h2>
+        <div class="card">
+          <label class="field-label" for="regionSelect">Filter by region</label>
+          <select id="regionSelect" disabled>
+            <option value="">All regions</option>
+          </select>
+
+          <div style="height:12px"></div>
+
+          <label class="field-label" for="provinceSelect">Filter by province</label>
+          <select id="provinceSelect" disabled>
+            <option value="">All provinces</option>
+          </select>
+
+          <div style="height:12px"></div>
+
+          <label class="field-label" for="addressSearch">Search by address</label>
+          <input id="addressSearch" type="search" placeholder="Search any address in Italy…" autocomplete="off" disabled />
+          <div id="searchStatus" class="search-status" aria-live="polite"></div>
+          <div id="searchResults" role="listbox" aria-label="Address matches"></div>
+
+          <div id="filterStatus" role="status"></div>
+          <p class="hint">Choosing a region zooms to it and switches on that region's building layer automatically. Address search works for any address in Italy — picking a suggestion zooms to street level, marks the spot, and turns on the local building layer.</p>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>Layers</h2>
+        <div class="card" id="layerList" aria-label="Layer visibility controls"></div>
+        <p class="hint">Building layers are grouped — expand the group to switch individual regions on or off. The ⓘ button opens each layer's published description.</p>
+      </div>
+
+      <div class="section">
+        <h2>Legend — visible layers</h2>
+        <div class="card" id="legendWrap"><div id="customLegend"></div><div id="legendDiv"></div></div>
+      </div>
+
+    </aside>
+
+    <div id="viewDiv"></div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="modalBackdrop" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <div class="modal">
+    <h3 id="modalTitle"></h3>
+    <div class="modal-sub" id="modalSub"></div>
+    <div class="body" id="modalBody"></div>
+    <div class="close-row"><button class="hbtn" id="modalClose">Close</button></div>
+  </div>
+</div>
+
+<script>
+/* =====================================================================
+   CONFIG — the only block you should ever need to edit.
+   ===================================================================== */
+const CONFIG = {
+  WEBMAP_ID: "71cdf4e34eb14ba5b46fa8f82cbae1b7",
+
+  // Layer-title matchers (case-insensitive)
+  BUILDING_LAYER_TITLE: /building/i,          // "Apulia Buildings", "Campania Building", …
+  REGION_LAYER_TITLE:   /region/i,            // "Italy Regions"
+  PROVINCE_LAYER_TITLE: /provin/i,            // "Italy Province(s)"
+  COUNTRY_LAYER_TITLE:  /country|italy\s*boundary/i,
+
+  // Landing page: only these layers start visible
+  DEFAULT_VISIBLE: [/flood\s*risk/i, /region/i, /country|italy\s*boundary/i],
+
+  STREET_ZOOM: 17,
+
+  // Fallback landing extent (WGS84) if the country/region layers can't be queried
+  ITALY_EXTENT: { xmin: 6.4, ymin: 36.3, xmax: 18.8, ymax: 47.3, spatialReference: { wkid: 4326 } },
+
+  // Set these ONLY if auto-detection picks the wrong field
+  REGION_NAME_FIELD: null,      // on the Italy Regions layer
+  PROVINCE_NAME_FIELD: null,    // on the Italy Province layer (the province's own name)
+  PROVINCE_REGION_FIELD: null,  // on the Italy Province layer (which region it belongs to)
+
+  /* Address search is a general geocoder (OpenStreetMap Nominatim) —
+     completely independent of the map's layers and fields. */
+  GEOCODER_COUNTRY: "it",       // restrict suggestions to Italy
+
+  /* Boundary and building layers carry no legend information — keep them out */
+  LEGEND_EXCLUDE: [/country/i, /region/i, /provin/i, /boundar/i, /building/i],
+
+  /* Hand-authored legends transcribed from the published factor maps.
+     Keyed by a fragment of the layer title (case-insensitive substring) —
+     several aliases can point at the same legend. Layers listed here are
+     removed from the automatic legend so they never appear twice. */
+  CUSTOM_LEGENDS: (() => {
+    const L = {};
+    const def = (keys, spec) => keys.forEach(k => { L[k] = spec; });
+
+    def(["risk"], { title: "Flood Risk Prediction", type: "classes",
+      note: "Overall flood risk predicted by the 10-factor AHP model. The score matches the Flood_Risk_Map value shown when you select a building: 1 = Very Low up to 5 = Very High.",
+      classes: [
+      { color: "#1f6b3a", label: "Very Low — 1" },
+      { color: "#82c561", label: "Low — 2" },
+      { color: "#fefdc9", label: "Medium — 3" },
+      { color: "#f68843", label: "High — 4" },
+      { color: "#a90d12", label: "Very High — 5" }
+    ]});
+
+    def(["elevation", "dem"], { title: "DEM Factor (value)", type: "classes", classes: [
+      { color: "#202d7c", label: "1" },
+      { color: "#1ba187", label: "3" },
+      { color: "#86e14b", label: "5" },
+      { color: "#eeab2f", label: "7" },
+      { color: "#b56a4b", label: "9" }
+    ]});
+
+    def(["slope"], { title: "Slope Factor — % rise (value)", type: "classes", classes: [
+      { color: "#157015", label: "1" },
+      { color: "#8db33a", label: "3" },
+      { color: "#f7f73b", label: "4" },
+      { color: "#f2a72e", label: "5" },
+      { color: "#f5511f", label: "8" }
+    ]});
+
+    def(["flow"], { title: "Flow Accumulation Factor (value)", type: "classes", classes: [
+      { color: "#fdf0f2", label: "1" },
+      { color: "#f9c8cd", label: "2" },
+      { color: "#ee5f9e", label: "4" },
+      { color: "#c11f80", label: "6" },
+      { color: "#521266", label: "8" }
+    ]});
+
+    def(["drainage"], { title: "Drainage Density Factor (value)", type: "classes", classes: [
+      { color: "#2f6b1f", label: "1" },
+      { color: "#a8d16a", label: "2" },
+      { color: "#f5f5b0", label: "4" },
+      { color: "#d8a45f", label: "7" },
+      { color: "#8c4a12", label: "8" }
+    ]});
+
+    def(["wetness", "twi"], { title: "Topographic Wetness Index Factor (value)", type: "classes", classes: [
+      { color: "#202d7c", label: "1" },
+      { color: "#1ba187", label: "3" },
+      { color: "#86e14b", label: "5" },
+      { color: "#eeab2f", label: "7" },
+      { color: "#b56a4b", label: "9" }
+    ]});
+
+    def(["precipitation"], { title: "Mean Monthly Precipitation Factor (value)", type: "classes", classes: [
+      { color: "#202d7c", label: "1" },
+      { color: "#1ba187", label: "3" },
+      { color: "#86e14b", label: "5" },
+      { color: "#eeab2f", label: "7" },
+      { color: "#b56a4b", label: "9" }
+    ]});
+
+    def(["land", "lulc"], { title: "Land-use / Landcover Factor (value)", type: "classes", classes: [
+      { color: "#4123d1", label: "1" },
+      { color: "#35b3ef", label: "3" },
+      { color: "#aae885", label: "5" },
+      { color: "#f5c518", label: "6" },
+      { color: "#ef1d16", label: "7" }
+    ]});
+
+    def(["coast"], { title: "Proximity to Coastline Factor (value)", type: "classes", classes: [
+      { color: "#fde2d9", label: "1" },
+      { color: "#f6a68e", label: "3" },
+      { color: "#ef6c4e", label: "4" },
+      { color: "#cd2010", label: "7" },
+      { color: "#7d0e07", label: "8" }
+    ]});
+
+    def(["water"], { title: "Distance from Waterbody Factor (value)", type: "classes", classes: [
+      { color: "#202d7c", label: "1" },
+      { color: "#1ba187", label: "3" },
+      { color: "#86e14b", label: "5" },
+      { color: "#f2a12c", label: "6" },
+      { color: "#b5674b", label: "8" }
+    ]});
+
+    def(["hazard"], { title: "Flood Hazard Factor — 100-yr return (value)", type: "classes", classes: [
+      { color: "#1f1d6e", label: "1" },
+      { color: "#9b1fd0", label: "3" },
+      { color: "#e0527f", label: "6" },
+      { color: "#f78a3a", label: "8" },
+      { color: "#fdf23c", label: "9" }
+    ]});
+
+    return L;
+  })(),
+
+  DARK_BASEMAP: "dark-gray-vector",
+
+  /* Uniform zoom cut-off for ALL factor layers: each stops drawing when
+     zoomed in beyond this scale, so no factor is ever shown stretched.
+     Only the Flood Risk Map is exempt and draws at every zoom level.
+     maxScale is an ArcGIS scale denominator — handy values (Web Mercator):
+     L13 ≈ 72224 · L14 ≈ 36112 · L15 ≈ 18056 · L16 ≈ 9028.
+     Raise to hide sooner, lower to allow deeper zoom, 0 = no cut-off. */
+  FACTOR_MAX_SCALE: 36112,
+  NO_SCALE_CAP: [/risk/i]          // layers exempt from the factor cut-off
+};
+
+/* Region-name aliases so English layer titles match Italian boundary names */
+const REGION_ALIASES = {
+  apulia: "puglia", sicily: "sicilia", sardinia: "sardegna", tuscany: "toscana",
+  piedmont: "piemonte", lombardy: "lombardia", "aostavalley": "valledaosta",
+  "trentinosouthtyrol": "trentinoaltoadige"
+};
+
+require([
+  "esri/config",
+  "esri/WebMap",
+  "esri/views/MapView",
+  "esri/widgets/Legend",
+  "esri/widgets/ScaleBar",
+  "esri/widgets/Fullscreen",
+  "esri/core/reactiveUtils",
+  "esri/geometry/Extent",
+  "esri/Graphic",
+  "esri/identity/IdentityManager"
+], (esriConfig, WebMap, MapView, Legend, ScaleBar, Fullscreen, reactiveUtils, Extent, Graphic, esriId) => {
+
+  const $ = (id) => document.getElementById(id);
+  const loader = $("loader"), loaderMsg = $("loaderMsg"), loadError = $("loadError");
+
+  /* Never show the ArcGIS sign-in dialog to visitors — and never WAIT on it.
+     Any request for credentials is rejected immediately, so private layers
+     fail fast (and get listed in the warning banner) instead of hanging the
+     whole load. */
+  esriId.getCredential = () => Promise.reject(new Error("Sign-in is disabled on this public dashboard"));
+  esriId.on("dialog-create", () => {
+    setTimeout(() => { try { esriId.dialog?.destroy(); } catch (e) {} }, 0);
+  });
+
+  /* Safety net: never let a promise stall the boot sequence */
+  const withTimeout = (promise, ms, label) =>
+    Promise.race([
+      promise,
+      new Promise((resolve) => setTimeout(() => resolve(`__timeout:${label}`), ms))
+    ]);
+
+  const webmap = new WebMap({ portalItem: { id: CONFIG.WEBMAP_ID } });
+  const view = new MapView({
+    container: "viewDiv",
+    map: webmap,
+    extent: new Extent(CONFIG.ITALY_EXTENT),
+    popup: { dockEnabled: false, defaultPopupTemplateEnabled: false },
+    constraints: { rotationEnabled: false }
+  });
+
+  view.ui.move("zoom", "top-right");
+  view.ui.add(new Fullscreen({ view }), "top-right");
+
+  /* Refresh button — reloads the page WITHOUT losing the user's place.
+     Before reloading, the current view (center, zoom) and layer toggles are
+     snapshotted into the URL hash; on boot the dashboard restores them
+     instead of the landing view. Distinct from Reset view, which returns
+     to the landing state. */
+  const STATE_PREFIX = "#state=";
+  function saveStateToHash() {
+    try {
+      const on = [];
+      webmap.allLayers.forEach(l => { if (l.type !== "group" && l.visible) on.push(l.title || ""); });
+      const s = {
+        c: [ +view.center.longitude.toFixed(6), +view.center.latitude.toFixed(6) ],
+        z: +view.zoom.toFixed(2),
+        on
+      };
+      window.location.hash = "state=" + encodeURIComponent(JSON.stringify(s));
+    } catch (e) { /* if the view isn't ready, plain reload is still fine */ }
+  }
+  function readStateFromHash() {
+    if (!window.location.hash.startsWith(STATE_PREFIX)) return null;
+    try { return JSON.parse(decodeURIComponent(window.location.hash.slice(STATE_PREFIX.length))); }
+    catch (e) { return null; }
+  }
+  function clearStateHash() {
+    try { history.replaceState(null, "", window.location.pathname + window.location.search); } catch (e) {}
+  }
+
+  const refreshBtn = document.createElement("div");
+  refreshBtn.className = "esri-widget--button esri-widget";
+  refreshBtn.setAttribute("role", "button");
+  refreshBtn.setAttribute("tabindex", "0");
+  refreshBtn.title = "Refresh map — redraws all layers in place, keeping the current view";
+  refreshBtn.setAttribute("aria-label", "Refresh map layers");
+  refreshBtn.innerHTML = '<span class="esri-icon-refresh" aria-hidden="true"></span>';
+
+  /* Soft refresh: ONLY the map redraws. The page, side panel, filters and
+     the current extent are untouched — every operational layer and basemap
+     layer is told to re-request its data/tiles in place. */
+  const doRefresh = () => {
+    const icon = refreshBtn.querySelector("span");
+    icon.classList.add("refresh-spin");
+    setTimeout(() => icon.classList.remove("refresh-spin"), 900);
+
+    const tryRefresh = (l) => {
+      if (l && l.loadStatus !== "failed" && typeof l.refresh === "function") {
+        try { l.refresh(); } catch (e) {}
+      }
+    };
+    webmap.allLayers.forEach(tryRefresh);
+    view.map.basemap?.baseLayers?.forEach(tryRefresh);
+    view.map.basemap?.referenceLayers?.forEach(tryRefresh);
+
+    /* keep the URL snapshot up to date so even a full browser reload
+       (F5) would come back to this exact view */
+    saveStateToHash();
+  };
+  refreshBtn.addEventListener("click", doRefresh);
+  refreshBtn.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); doRefresh(); } });
+  view.ui.add(refreshBtn, "top-right");
+
+  view.ui.add(new ScaleBar({ view, unit: "metric", style: "ruler" }), "bottom-right");
+
+  /* ------------ state ------------ */
+  let buildingLayers = [];        // [{layer, key, display}]
+  let regionLayer = null, provinceLayer = null, countryLayer = null;
+  let regionNameField = null, provNameField = null, provRegionField = null;
+  let provinceCache = [];         // [{name, region, key, regionKey}]
+  let landingExtent = new Extent(CONFIG.ITALY_EXTENT);
+
+  /* ------------ helpers ------------ */
+  const norm = (s) => String(s || "")
+    .toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")   // strip accents
+    .replace(/[^a-z0-9]/g, "");                          // strip spaces, ' - / etc.
+  const canon = (s) => { const k = norm(s); return REGION_ALIASES[k] || k; };
+  const sameName = (a, b) => {
+    const x = canon(a), y = canon(b);
+    return x === y || (x.length > 4 && (x.startsWith(y) || y.startsWith(x)));
+  };
+  const escapeHtml = (s) => String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+  const sqlq = (s) => String(s).replace(/'/g, "''");
+
+  /* ================= boot ================= */
+  (async () => {
+    try {
+      /* Pre-flight: is the webmap itself public? Checked anonymously so
+         nobody ever gets a login prompt. */
+      loaderMsg.textContent = "Checking public access…";
+      try {
+        const r = await withTimeout(
+          fetch(`https://www.arcgis.com/sharing/rest/content/items/${CONFIG.WEBMAP_ID}?f=json`),
+          10000, "preflight");
+        if (r !== "__timeout:preflight") {
+          const j = await r.json();
+          if (j.error) { showSharingError([ "the webmap itself" ]); return; }
+        }
+      } catch (e) { /* network hiccup — let the SDK try anyway */ }
+
+      loaderMsg.textContent = "Loading webmap…";
+      const mapLoad = await withTimeout(webmap.load(), 30000, "webmap");
+      if (mapLoad === "__timeout:webmap") { showSharingError(["the webmap itself (timed out)"]); return; }
+
+      loaderMsg.textContent = "Loading layers… (private layers are skipped)";
+      await withTimeout(webmap.loadAll().catch(() => {}), 45000, "layers");
+
+      loaderMsg.textContent = "Preparing the map…";
+      await withTimeout(view.when(), 30000, "view");
+
+      /* Any layer not fully loaded (failed OR still stuck) is treated as
+         private: warn, don't block, and drop it from the interactive UI */
+      const failed = [];
+      webmap.allLayers.forEach(l => {
+        if (l.type === "group") return;
+        if (l.loadStatus !== "loaded") failed.push(l.title || "(untitled layer)");
+      });
+      if (failed.length) {
+        const w = $("shareWarn");
+        w.classList.add("on");
+        w.innerHTML = `<strong>${failed.length} layer${failed.length>1?"s are":" is"} not shared publicly</strong> and can't be shown to anonymous visitors: ${failed.map(escapeHtml).join(", ")}. In ArcGIS Online set each one to <em>Share → Everyone (public)</em>.`;
+      }
+
+      if (CONFIG.DARK_BASEMAP) webmap.basemap = CONFIG.DARK_BASEMAP;
+
+      const item = webmap.portalItem;
+      if (item?.title) { $("appTitle").textContent = item.title; document.title = item.title + " — Dashboard"; }
+
+      identifyLayers();
+      applyLandingVisibility();
+
+      /* If this load is a Refresh (state snapshot in the URL hash), restore
+         the user's layer toggles in place of the landing defaults */
+      const saved = readStateFromHash();
+      if (saved && Array.isArray(saved.on)) {
+        webmap.allLayers.forEach(l => { if (l.type !== "group") l.visible = saved.on.includes(l.title || ""); });
+        webmap.allLayers.forEach(l => { if (l.type === "group") l.visible = l.layers.some(c => c.visible); });
+      }
+
+      ensurePopups();
+      await computeLandingExtent();
+      labelBoundaries();
+      buildLayerListUI();
+      new Legend({
+        view,
+        container: "legendDiv",
+        respectLayerVisibility: true,        // legend follows the layer toggles
+        hideLayersNotInCurrentView: false    // keep entries while panning/zooming
+      });
+      buildCustomLegends();
+      await setupBasemapLabelControl();
+
+      populateRegionDropdown();
+      await loadProvinceCache();
+      populateProvinceDropdown("");
+      setupAddressSearch();
+
+      if (saved && Array.isArray(saved.c) && saved.c.length === 2 && isFinite(saved.z)) {
+        view.goTo({ center: saved.c, zoom: saved.z }, { duration: 0 }).catch(() => {});
+      } else {
+        view.goTo(landingExtent, { duration: 0 }).catch(() => {});
+      }
+
+      loader.classList.add("hide");
+      setTimeout(() => loader.remove(), 600);
+    } catch (err) {
+      console.error(err);
+      showSharingError(null, err);
+    }
+  })();
+
+  function showSharingError(privateItems, err) {
+    loaderMsg.textContent = "";
+    loadError.style.display = "block";
+    loadError.innerHTML =
+      "<strong>This map isn't publicly viewable yet.</strong><br>" +
+      (privateItems ? `Access is blocked on: ${privateItems.map(escapeHtml).join(", ")}.` : "") +
+      "<br>To open it to everyone — no ArcGIS account needed — the owner must, in ArcGIS Online:" +
+      "<ol><li>Open the webmap's item page → <em>Share</em> → choose <em>Everyone (public)</em>.</li>" +
+      "<li>When prompted, accept <em>Update sharing</em> for all the layers the map uses (or share each layer item to Everyone individually).</li>" +
+      "<li>Reload this page.</li></ol>" +
+      (err ? `<span style='color:var(--text-dim)'>Technical detail: ${escapeHtml(err.message || err)}</span>` : "");
+  }
+
+  /* ================= layer discovery ================= */
+  function identifyLayers() {
+    const loaded = webmap.allLayers.filter(l => l.loadStatus === "loaded");
+
+    buildingLayers = loaded
+      .filter(l => l.type === "feature" && CONFIG.BUILDING_LAYER_TITLE.test(l.title || ""))
+      .toArray()
+      .map(layer => {
+        const display = (layer.title || "").replace(/\s*buildings?\s*$/i, "").trim();
+        return { layer, display, key: canon(display) };
+      })
+      .sort((a, b) => a.display.localeCompare(b.display));
+
+    const nonBuilding = loaded.filter(l => l.type === "feature" && !CONFIG.BUILDING_LAYER_TITLE.test(l.title || ""));
+    regionLayer   = nonBuilding.find(l => CONFIG.REGION_LAYER_TITLE.test(l.title || "")) || null;
+    provinceLayer = nonBuilding.find(l => CONFIG.PROVINCE_LAYER_TITLE.test(l.title || "")) || null;
+    countryLayer  = nonBuilding.find(l => CONFIG.COUNTRY_LAYER_TITLE.test(l.title || "")) || null;
+  }
+
+  function applyLandingVisibility() {
+    webmap.allLayers.forEach(l => {
+      if (l.type === "group") return;
+      l.visible = l.loadStatus === "loaded" && CONFIG.DEFAULT_VISIBLE.some(rx => rx.test(l.title || ""));
+    });
+    webmap.allLayers.forEach(l => {
+      if (l.type === "group") l.visible = l.layers.some(c => c.visible);
+    });
+  }
+
+  function ensurePopups() {
+    webmap.allLayers.forEach(l => {
+      /* Legend policy: boundary layers (country / regions / provinces) are
+         navigation aids, not information — keep them out of the legend.
+         Layers with a hand-authored CUSTOM_LEGENDS entry are also removed
+         from the automatic legend so they aren't shown twice. */
+      if (l.loadStatus === "loaded" && "legendEnabled" in l) {
+        const title = l.title || "";
+        const excluded = CONFIG.LEGEND_EXCLUDE.some(rx => rx.test(title)) || !!customLegendFor(title);
+        try { l.legendEnabled = !excluded; } catch (e) {}
+      }
+      /* Remove any saved visibility range (0 = no limit), then apply the
+         uniform factor cut-off: every thematic factor layer hides beyond
+         FACTOR_MAX_SCALE; only exempt layers (the risk map) keep drawing
+         at all zoom levels. */
+      if (l.loadStatus === "loaded") {
+        try { if ("minScale" in l) l.minScale = 0; } catch (e) {}
+        try { if ("maxScale" in l) l.maxScale = 0; } catch (e) {}
+        const title = l.title || "";
+        const isThematic = !!customLegendFor(title);
+        const exempt = CONFIG.NO_SCALE_CAP.some(rx => rx.test(title));
+        if (isThematic && !exempt && CONFIG.FACTOR_MAX_SCALE && "maxScale" in l) {
+          try { l.maxScale = CONFIG.FACTOR_MAX_SCALE; } catch (e) {}
+        }
+      }
+      if (l.type === "feature" && l.loadStatus === "loaded") {
+        l.popupEnabled = true;
+        if (!l.popupTemplate) { try { l.popupTemplate = l.createPopupTemplate(); } catch (e) {} }
+      }
+    });
+  }
+
+  function customLegendFor(title) {
+    const t = String(title || "").toLowerCase();
+    const key = Object.keys(CONFIG.CUSTOM_LEGENDS).find(k => t.includes(k.toLowerCase()));
+    return key ? CONFIG.CUSTOM_LEGENDS[key] : null;
+  }
+
+  /* Hand-authored legends render only while their layer is visible */
+  function buildCustomLegends() {
+    const host = $("customLegend");
+    host.innerHTML = "";
+    const boxes = [];
+
+    /* Empty-state note shown when no thematic layer is switched on */
+    const empty = document.createElement("div");
+    empty.className = "legend-empty";
+    empty.textContent = "No thematic layer is switched on. Toggle the Flood Risk Map or any factor layer above to see its legend here.";
+
+    const updateEmpty = () => {
+      empty.classList.toggle("on", !boxes.some(b => b.style.display !== "none"));
+    };
+
+    webmap.allLayers.forEach(l => {
+      if (l.type === "group" || l.loadStatus !== "loaded") return;
+      const spec = customLegendFor(l.title);
+      if (!spec) return;
+
+      const box = document.createElement("div");
+      box.className = "clegend";
+      box.style.display = l.visible ? "block" : "none";
+
+      const h = document.createElement("h4");
+      h.textContent = spec.title || l.title;
+      box.appendChild(h);
+
+      if (spec.type === "gradient" && Array.isArray(spec.colors)) {
+        const ramp = document.createElement("div");
+        ramp.className = "ramp";
+        ramp.style.background = `linear-gradient(90deg, ${spec.colors.join(",")})`;
+        const labels = document.createElement("div");
+        labels.className = "ramp-labels";
+        labels.innerHTML = `<span>${escapeHtml(spec.min ?? "low")}</span><span>${escapeHtml(spec.max ?? "high")}</span>`;
+        box.appendChild(ramp); box.appendChild(labels);
+      } else if (spec.type === "classes" && Array.isArray(spec.classes)) {
+        spec.classes.forEach(c => {
+          const row = document.createElement("div");
+          row.className = "cls";
+          row.innerHTML = `<span class="swatch" style="background:${c.color}"></span><span>${escapeHtml(c.label ?? "")}</span>`;
+          box.appendChild(row);
+        });
+      }
+
+      /* Caption so users can contextualize the numbers: explicit note if the
+         spec provides one, otherwise auto-worded from the class range */
+      let note = spec.note;
+      if (!note && spec.type === "classes") {
+        const nums = spec.classes.map(c => parseInt(c.label, 10)).filter(Number.isFinite);
+        if (nums.length >= 2) {
+          const lo = Math.min(...nums), hi = Math.max(...nums);
+          note = `How to read the values: each cell is ranked by how strongly it contributes to flood vulnerability — ${lo} means the least contribution, rising to ${hi} for the strongest contribution.`;
+        }
+      }
+      if (note) {
+        const n = document.createElement("div");
+        n.className = "note";
+        n.textContent = note;
+        box.appendChild(n);
+      }
+
+      host.appendChild(box);
+      boxes.push(box);
+      reactiveUtils.watch(() => l.visible, v => { box.style.display = v ? "block" : "none"; updateEmpty(); });
+    });
+
+    host.appendChild(empty);
+    updateEmpty();
+  }
+
+  /* ---------------- basemap labels vs thematic layers ----------------
+     Street names and place annotation live in the basemap's reference
+     layers, which draw ON TOP of operational layers. Whenever any thematic
+     layer (risk map or a factor) is switched on, those labels are hidden so
+     they never float over the raster; the moment every thematic layer is
+     off, the labels return. */
+  async function setupBasemapLabelControl() {
+    const thematic = webmap.allLayers
+      .filter(l => l.type !== "group" && l.loadStatus === "loaded" && !!customLegendFor(l.title))
+      .toArray();
+    if (!thematic.length) return;
+
+    const updateLabels = () => {
+      const anyOn = thematic.some(l => l.visible);
+      const bm = view.map.basemap;
+      if (bm?.referenceLayers) bm.referenceLayers.forEach(rl => { rl.visible = !anyOn; });
+    };
+
+    try { await view.map.basemap?.load?.(); } catch (e) {}
+    updateLabels();
+    thematic.forEach(l => reactiveUtils.watch(() => l.visible, updateLabels));
+    /* if the basemap ever changes, re-apply the current label state */
+    reactiveUtils.watch(() => view.map.basemap, () => {
+      view.map.basemap?.load?.().then(updateLabels).catch(() => {});
+    });
+  }
+
+  /* Full-Italy landing extent, computed from the data itself */
+  async function computeLandingExtent() {
+    const src = countryLayer || regionLayer;
+    if (!src) return;
+    try {
+      const res = await src.queryExtent({ where: "1=1" });
+      if (res?.extent) landingExtent = res.extent.expand(1.06);
+    } catch (e) { /* keep fallback */ }
+  }
+
+  /* ================= field detection & labels ================= */
+  function pickField(layer, prefer, avoid) {
+    const fs = (layer.fields || []).filter(f => f.type === "string");
+    return fs.find(f => prefer.test(f.name) && !(avoid && avoid.test(f.name)))?.name ||
+           fs.find(f => !(avoid && avoid.test(f.name)))?.name || fs[0]?.name || null;
+  }
+
+  function labelBoundaries() {
+    if (regionLayer) {
+      regionNameField = CONFIG.REGION_NAME_FIELD ||
+        pickField(regionLayer, /(den.*reg|reg.*(name|nome)|nome.*reg|^name_?1$|^region|^nome$|^name$)/i, /prov|code|cod_/i);
+      if (regionNameField) applyLabels(regionLayer, regionNameField, 11);
+    }
+    if (provinceLayer) {
+      provNameField = CONFIG.PROVINCE_NAME_FIELD ||
+        pickField(provinceLayer, /(den.*(prov|uts)|prov.*(name|nome)|nome.*prov|^name_?2$|sigla)/i, /reg|code|cod_/i);
+      provRegionField = CONFIG.PROVINCE_REGION_FIELD ||
+        pickField(provinceLayer, /(den.*reg|reg.*(name|nome)|nome.*reg|^name_?1$)/i, /prov|code|cod_/i);
+      if (provNameField) applyLabels(provinceLayer, provNameField, 10);
+    }
+  }
+
+  function applyLabels(layer, field, size) {
+    layer.labelingInfo = [{
+      labelExpressionInfo: { expression: `$feature.${field}` },
+      labelPlacement: "always-horizontal",
+      symbol: {
+        type: "text",
+        color: "#dcecf5",
+        haloColor: "#0c141d",
+        haloSize: 1.4,
+        font: { family: "Arial", size, weight: "bold" }
+      }
+    }];
+    layer.labelsVisible = true;
+  }
+
+  /* ================= layer list UI ================= */
+  function buildLayerListUI() {
+    const root = $("layerList");
+    root.innerHTML = "";
+    const buildingSet = new Set(buildingLayers.map(b => b.layer));
+    const top = webmap.layers.toArray().slice().reverse();
+    let groupInserted = false;
+
+    top.forEach(l => {
+      const isBuildingLeaf = l.type !== "group" && buildingSet.has(l);
+      if (isBuildingLeaf) {
+        if (!groupInserted) { root.appendChild(buildBuildingGroup(buildingSet)); groupInserted = true; }
+        return; // individual building rows live inside the group
+      }
+      root.appendChild(layerNode(l, buildingSet));
+    });
+    if (!groupInserted && buildingLayers.length) root.appendChild(buildBuildingGroup(buildingSet));
+  }
+
+  function buildBuildingGroup(buildingSet) {
+    const g = document.createElement("div");
+    g.className = "lgroup"; // collapsed by default
+
+    const head = document.createElement("div");
+    head.className = "lgroup-head";
+
+    const chev = document.createElement("button");
+    chev.className = "chev";
+    chev.setAttribute("aria-label", "Expand building layers");
+    chev.setAttribute("aria-expanded", "false");
+    chev.innerHTML = `<svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M3 1l4 4-4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+    chev.addEventListener("click", () => {
+      const open = g.classList.toggle("open");
+      chev.setAttribute("aria-expanded", String(open));
+    });
+
+    // master toggle: on = at least one building layer visible; switching sets all
+    const tog = document.createElement("label");
+    tog.className = "toggle";
+    tog.innerHTML = `<input type="checkbox" aria-label="Toggle all building layers"><span class="track"></span><span class="knob"></span>`;
+    const master = tog.querySelector("input");
+    const syncMaster = () => { master.checked = buildingLayers.some(b => b.layer.visible); };
+    syncMaster();
+    master.addEventListener("change", () => buildingLayers.forEach(b => { b.layer.visible = master.checked; }));
+
+    const name = document.createElement("span");
+    name.className = "gname";
+    name.innerHTML = `Building layers <span class="gcount">(${buildingLayers.length} regions)</span>`;
+
+    head.appendChild(chev); head.appendChild(tog); head.appendChild(name);
+    g.appendChild(head);
+
+    const body = document.createElement("div");
+    body.className = "lgroup-body";
+    buildingLayers.forEach(b => {
+      const row = layerNode(b.layer, buildingSet, true);
+      body.appendChild(row);
+      // keep master toggle in sync with children
+      reactiveUtils.watch(() => b.layer.visible, syncMaster);
+    });
+    g.appendChild(body);
+    return g;
+  }
+
+  function layerNode(layer, buildingSet, inGroup) {
+    const wrap = document.createElement("div");
+    const row = document.createElement("div");
+    row.className = "layer-row";
+
+    /* Private / failed layer: dimmed, no toggle */
+    if (layer.type !== "group" && layer.loadStatus !== "loaded") {
+      row.style.opacity = ".45";
+      row.innerHTML = `<span class="name">${escapeHtml(layer.title || "(untitled layer)")}
+        <span style="color:var(--risk);font-size:.72rem"> — not shared publicly</span></span>`;
+      wrap.appendChild(row);
+      return wrap;
+    }
+
+    const tog = document.createElement("label");
+    tog.className = "toggle";
+    tog.innerHTML = `<input type="checkbox" aria-label="Toggle ${escapeHtml(layer.title || "layer")}"><span class="track"></span><span class="knob"></span>`;
+    const cb = tog.querySelector("input");
+    cb.checked = layer.visible;
+    cb.addEventListener("change", () => { layer.visible = cb.checked; });
+    reactiveUtils.watch(() => layer.visible, v => { cb.checked = v; });
+
+    const name = document.createElement("span");
+    name.className = "name";
+    name.textContent = layer.title || "(untitled layer)";
+
+    row.appendChild(tog);
+    row.appendChild(name);
+
+    if (layer.type !== "group") {
+      const info = document.createElement("button");
+      info.className = "info-btn";
+      info.textContent = "i";
+      info.title = "Layer description";
+      info.setAttribute("aria-label", `Description of ${layer.title || "layer"}`);
+      info.addEventListener("click", () => showLayerInfo(layer));
+      row.appendChild(info);
+    }
+
+    wrap.appendChild(row);
+
+    if (layer.type === "group") {
+      const kids = document.createElement("div");
+      kids.className = "layer-children";
+      layer.layers.toArray().slice().reverse().forEach(c => {
+        if (buildingSet && buildingSet.has(c)) return; // building children shown in the collapsed group
+        kids.appendChild(layerNode(c, buildingSet));
+      });
+      wrap.appendChild(kids);
+    }
+    return wrap;
+  }
+
+  /* ================= descriptions ================= */
+  async function showLayerInfo(layer) {
+    openModal(layer.title || "Layer", "Loading description…", "");
+    let html = "";
+    try {
+      if (layer.portalItem) {
+        await layer.portalItem.load();
+        html = layer.portalItem.description || "";
+        if (!html && layer.portalItem.snippet) html = "<p>" + escapeHtml(layer.portalItem.snippet) + "</p>";
+      }
+    } catch (e) {}
+    if (!html) {
+      try {
+        await layer.load();
+        const d = layer.sourceJSON?.description || layer.sourceJSON?.serviceDescription || "";
+        if (d) html = "<p>" + escapeHtml(d) + "</p>";
+      } catch (e) {}
+    }
+    if (!html) {
+      html = webmap.portalItem?.description
+        ? "<p style='color:var(--text-dim)'>No description is published for this specific layer. From the webmap overview:</p>" + webmap.portalItem.description
+        : "<p>No description has been published for this layer yet.</p>";
+    }
+    setModal(layer.title || "Layer", layer.type === "feature" ? "Feature layer" : (layer.type || "Layer"), html);
+  }
+
+  $("aboutBtn").addEventListener("click", () => {
+    const item = webmap.portalItem;
+    let html = item?.description || "<p>No description published on the webmap item.</p>";
+    if (item?.accessInformation) {
+      html += `<h4>Credits</h4><p>${escapeHtml(item.accessInformation)}</p>`;
+    }
+    if (item?.licenseInfo) {
+      html += `<h4>Terms of use</h4><div>${item.licenseInfo}</div>`;
+    }
+    if (Array.isArray(item?.tags) && item.tags.length) {
+      html += `<h4>Tags</h4><div class="tags">` +
+        item.tags.map(t => `<span class="tagchip">${escapeHtml(t)}</span>`).join("") +
+        `</div>`;
+    }
+    openModal(item?.title || "About this map", item?.snippet || "", html);
+  });
+
+  function openModal(t, s, b) { setModal(t, s, b); $("modalBackdrop").classList.add("open"); }
+  function setModal(t, s, b) { $("modalTitle").textContent = t; $("modalSub").textContent = s || ""; $("modalBody").innerHTML = b; }
+  $("modalClose").addEventListener("click", () => $("modalBackdrop").classList.remove("open"));
+  $("modalBackdrop").addEventListener("click", e => { if (e.target === e.currentTarget) e.currentTarget.classList.remove("open"); });
+  window.addEventListener("keydown", e => { if (e.key === "Escape") $("modalBackdrop").classList.remove("open"); });
+
+  /* ================= region dropdown ================= */
+  function populateRegionDropdown() {
+    const sel = $("regionSelect");
+    if (!buildingLayers.length) return;
+    buildingLayers.forEach(b => {
+      const o = document.createElement("option");
+      o.value = b.key; o.textContent = b.display;
+      sel.appendChild(o);
+    });
+    sel.disabled = false;
+    sel.addEventListener("change", () => onRegionChange(sel.value));
+  }
+
+  async function onRegionChange(key) {
+    const status = $("filterStatus");
+    $("provinceSelect").value = "";
+    populateProvinceDropdown(key);
+
+    if (!key) {
+      buildingLayers.forEach(b => { b.layer.visible = false; });
+      status.classList.remove("on");
+      view.goTo(landingExtent, { duration: 800 }).catch(() => {});
+      return;
+    }
+
+    const entry = buildingLayers.find(b => b.key === key);
+    if (!entry) return;
+
+    // Requirement: selecting a region switches on the matching building layer
+    buildingLayers.forEach(b => { b.layer.visible = (b === entry); });
+
+    status.classList.add("on");
+    status.innerHTML = `Showing <strong>${escapeHtml(entry.display)}</strong> — its building layer is now on. Pick a province to zoom closer, or search an address.`;
+
+    // Zoom: prefer the region polygon, fall back to the building layer's extent
+    let target = null;
+    if (regionLayer && regionNameField) {
+      try {
+        const q = regionLayer.createQuery();
+        q.where = "1=1"; q.outFields = [regionNameField]; q.returnGeometry = true;
+        const res = await regionLayer.queryFeatures(q);
+        const f = res.features.find(ft => sameName(ft.attributes[regionNameField], entry.display));
+        if (f?.geometry) target = f.geometry.extent?.expand(1.12) || f.geometry;
+      } catch (e) {}
+    }
+    if (!target) {
+      try {
+        const res = await entry.layer.queryExtent({ where: "1=1" });
+        if (res?.extent) target = res.extent.expand(1.12);
+      } catch (e) {}
+    }
+    if (target) view.goTo(target, { duration: 900 }).catch(() => {});
+  }
+
+  /* ================= province dropdown ================= */
+  async function loadProvinceCache() {
+    if (!provinceLayer || !provNameField) return;
+    try {
+      const q = provinceLayer.createQuery();
+      q.where = "1=1";
+      q.outFields = [provNameField, provRegionField].filter(Boolean);
+      q.returnGeometry = false;
+      q.maxRecordCountFactor = 5;
+      const res = await provinceLayer.queryFeatures(q);
+      provinceCache = res.features.map(f => {
+        const name = f.attributes[provNameField];
+        const region = provRegionField ? f.attributes[provRegionField] : null;
+        return { name, region, key: canon(name), regionKey: region ? canon(region) : null };
+      }).filter(p => p.name)
+        .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+    } catch (e) { console.warn("Province list query failed", e); }
+  }
+
+  function populateProvinceDropdown(regionKey) {
+    const sel = $("provinceSelect");
+    sel.innerHTML = `<option value="">All provinces</option>`;
+    if (!provinceCache.length) {
+      sel.disabled = true;
+      if (!provinceLayer) {
+        $("filterStatus").classList.add("on");
+        $("filterStatus").textContent = "No province boundary layer detected — check CONFIG.PROVINCE_LAYER_TITLE.";
+      }
+      return;
+    }
+    const list = regionKey
+      ? provinceCache.filter(p => p.regionKey && sameName(p.regionKey, regionKey))
+      : provinceCache;
+    (list.length ? list : provinceCache).forEach(p => {
+      const o = document.createElement("option");
+      o.value = p.name; o.textContent = p.name;
+      sel.appendChild(o);
+    });
+    sel.disabled = false;
+    if (!sel.dataset.bound) {
+      sel.dataset.bound = "1";
+      sel.addEventListener("change", () => onProvinceChange(sel.value));
+    }
+  }
+
+  async function onProvinceChange(name) {
+    if (!name) {
+      const rk = $("regionSelect").value;
+      if (rk) onRegionChange(rk);
+      return;
+    }
+    const entry = provinceCache.find(p => p.name === name);
+
+    // Turn on the building layer of the region this province belongs to
+    if (entry?.regionKey) {
+      const b = buildingLayers.find(x => sameName(x.key, entry.regionKey));
+      if (b) b.layer.visible = true;
+    }
+    if (provinceLayer) provinceLayer.visible = true;
+
+    try {
+      const q = provinceLayer.createQuery();
+      q.where = `${provNameField} = '${sqlq(name)}'`;
+      q.returnGeometry = true;
+      q.num = 1;
+      const res = await provinceLayer.queryFeatures(q);
+      const f = res.features[0];
+      if (f?.geometry) await view.goTo(f.geometry.extent?.expand(1.1) || f.geometry, { duration: 900 });
+      const status = $("filterStatus");
+      status.classList.add("on");
+      status.innerHTML = `Zoomed to <strong>${escapeHtml(name)}</strong>${entry?.region ? ` (${escapeHtml(String(entry.region))})` : ""}. Buildings for its region are on — zoom in or search an address for street level.`;
+    } catch (e) { console.warn(e); }
+  }
+
+  /* ================= address search — general geocoder =================
+     Fully independent of the map's layers and fields: suggestions come from
+     OpenStreetMap's Nominatim geocoder (free, no API key), restricted to
+     Italy. Picking a result drops a marker, zooms to street level, and
+     switches on the building layer of whichever region contains the point. */
+  let searchSeq = 0;
+
+  function searchStatus(msg, warn) {
+    const el = $("searchStatus");
+    if (!msg) { el.classList.remove("on", "warn"); el.textContent = ""; return; }
+    el.textContent = msg;
+    el.classList.add("on");
+    el.classList.toggle("warn", !!warn);
+  }
+
+  function setupAddressSearch() {
+    const input = $("addressSearch");
+    input.disabled = false;
+    let t = null;
+    input.addEventListener("input", () => {
+      clearTimeout(t);
+      const term = input.value.trim();
+      if (!term.length) { renderResults([]); searchStatus(""); return; }
+      if (term.length < 3) { renderResults([]); searchStatus("Keep typing — suggestions appear from 3 letters."); return; }
+      searchStatus("Searching addresses…");
+      t = setTimeout(() => runAddressSearch(term), 450);
+    });
+  }
+
+  async function runAddressSearch(term) {
+    const seq = ++searchSeq;
+    try {
+      const url = "https://nominatim.openstreetmap.org/search?" + new URLSearchParams({
+        q: term,
+        format: "jsonv2",
+        countrycodes: CONFIG.GEOCODER_COUNTRY,
+        limit: "8",
+        "accept-language": "en"
+      });
+      const r = await fetch(url, { headers: { "Accept": "application/json" } });
+      const places = await r.json();
+      if (seq !== searchSeq) return;               // superseded by a newer keystroke
+      renderResults(Array.isArray(places) ? places : []);
+      if (!Array.isArray(places) || !places.length) {
+        searchStatus("No matching address found. Try adding the town or province name.");
+      } else {
+        searchStatus(`${places.length} suggestion${places.length > 1 ? "s" : ""} — select one to zoom there.`);
+      }
+    } catch (e) {
+      if (seq !== searchSeq) return;
+      console.warn("Geocoding failed", e);
+      renderResults([]);
+      searchStatus("Address service is unreachable right now — check the connection and try again.", true);
+    }
+  }
+
+  function renderResults(places) {
+    const box = $("searchResults");
+    box.innerHTML = "";
+    if (!places.length) { box.classList.remove("open"); return; }
+    places.forEach(p => {
+      const b = document.createElement("button");
+      b.className = "result-item";
+      b.setAttribute("role", "option");
+      const parts = String(p.display_name || "").split(",");
+      const main = parts.slice(0, 2).join(",").trim() || p.display_name;
+      const rest = parts.slice(2).join(",").trim();
+      b.innerHTML = escapeHtml(main) + (rest ? `<span class="sub">${escapeHtml(rest)}</span>` : "");
+      b.addEventListener("click", () => goToPlace(p));
+      box.appendChild(b);
+    });
+    box.classList.add("open");
+  }
+
+  async function goToPlace(place) {
+    $("searchResults").classList.remove("open");
+    searchStatus("");
+    const lat = parseFloat(place.lat), lon = parseFloat(place.lon);
+    if (!isFinite(lat) || !isFinite(lon)) return;
+    const point = { type: "point", longitude: lon, latitude: lat, spatialReference: { wkid: 4326 } };
+
+    /* marker at the geocoded location */
+    view.graphics.removeAll();
+    view.graphics.add(new Graphic({
+      geometry: point,
+      symbol: {
+        type: "simple-marker",
+        style: "circle",
+        color: [89, 193, 216, 0.35],
+        size: 16,
+        outline: { color: "#59c1d8", width: 2 }
+      }
+    }));
+
+    await view.goTo({ target: point, zoom: CONFIG.STREET_ZOOM }, { duration: 900 }).catch(() => {});
+
+    /* switch on the building layer of the region that contains this point */
+    let regionName = null;
+    if (regionLayer && regionNameField) {
+      try {
+        const q = regionLayer.createQuery();
+        q.geometry = view.center;
+        q.spatialRelationship = "intersects";
+        q.outFields = [regionNameField];
+        q.returnGeometry = false;
+        q.num = 1;
+        const res = await regionLayer.queryFeatures(q);
+        regionName = res.features[0]?.attributes?.[regionNameField] || null;
+      } catch (e) {}
+    }
+    if (regionName) {
+      const b = buildingLayers.find(x => sameName(x.display, regionName));
+      if (b) b.layer.visible = true;
+      const status = $("filterStatus");
+      status.classList.add("on");
+      status.innerHTML = `Zoomed to <strong>${escapeHtml(String(place.display_name || "").split(",")[0])}</strong> in <strong>${escapeHtml(String(regionName))}</strong> — its building layer is on. Select any footprint for details.`;
+    }
+    if (window.matchMedia("(max-width: 860px)").matches) $("panel").classList.remove("open");
+  }
+
+  /* ================= reset ================= */
+  $("resetBtn").addEventListener("click", () => {
+    clearStateHash();
+    $("regionSelect").value = "";
+    populateProvinceDropdown("");
+    $("provinceSelect").value = "";
+    $("addressSearch").value = "";
+    renderResults([]);
+    searchStatus("");
+    $("filterStatus").classList.remove("on");
+    view.graphics.removeAll();
+    applyLandingVisibility();
+    view.closePopup();
+    view.goTo(landingExtent, { duration: 900 }).catch(() => {});
+  });
+
+  $("panelToggle").addEventListener("click", () => $("panel").classList.toggle("open"));
+});
+</script>
+</body>
+</html>
