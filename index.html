@@ -3,7 +3,38 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-<title>Italy Flood Vulnerability Map — Dashboard</title>
+<title>Italy Flood Vulnerability Map | Interactive Flood Risk Dashboard</title>
+<meta name="description" content="Interactive map of flood vulnerability and flood risk across Italy. Explore a Flood Vulnerability Index built from 10 criteria with the Analytical Hierarchy Process (AHP), and search any address, region or province." />
+<meta name="author" content="Ayodele Michael Agboola" />
+<meta name="robots" content="index, follow, max-image-preview:large" />
+<link rel="canonical" href="https://amichael-a.github.io/italy-flood-dashboard/" />
+<!-- Paste the code Google Search Console gives you here, then uncomment:
+<meta name="google-site-verification" content="YOUR_CODE_HERE" /> -->
+
+<!-- Social sharing previews (LinkedIn, X, WhatsApp, Slack) -->
+<meta property="og:type" content="website" />
+<meta property="og:title" content="Italy Flood Vulnerability Map — Interactive Flood Risk Dashboard" />
+<meta property="og:description" content="Flood Vulnerability Index for Italy from 10 criteria (AHP), validated with flood fatality records. Search any address, region or province." />
+<meta property="og:url" content="https://amichael-a.github.io/italy-flood-dashboard/" />
+<meta property="og:image" content="https://amichael-a.github.io/italy-flood-dashboard/preview.png" />
+<meta name="twitter:card" content="summary_large_image" />
+
+<!-- Structured data: makes the map eligible for Google Dataset Search -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Dataset",
+  "name": "Italy Flood Vulnerability Map",
+  "alternateName": ["Italy Flood Vulnerability Index", "Italy Flood Risk Map"],
+  "description": "A Flood Vulnerability Index for Italy derived from 10 criteria (elevation, slope, flow accumulation, drainage density, Topographic Wetness Index, mean precipitation, land use/land cover, proximity to coastline, distance from waterbodies and 100-year flood hazard) weighted with the Analytical Hierarchy Process (AHP) and validated against flood fatality records (FFEM-DB). Presented as an interactive web map with building-level layers by region.",
+  "url": "https://amichael-a.github.io/italy-flood-dashboard/",
+  "keywords": ["Italy flood vulnerability", "Italy flood risk map", "flood vulnerability index", "flood hazard", "Analytical Hierarchy Process", "AHP", "multi-criteria analysis", "GIS", "urban expansion", "Italy"],
+  "creator": {"@type": "Person", "name": "Ayodele Michael Agboola", "url": "https://ayodelemichaelagbo.wixsite.com/info"},
+  "spatialCoverage": {"@type": "Place", "name": "Italy"},
+  "isAccessibleForFree": true,
+  "license": "https://github.com/amichael-a/italy-flood-dashboard/blob/main/LICENSE.md"
+}
+</script>
 
 <!-- ArcGIS Maps SDK for JavaScript (dark theme) -->
 <link rel="stylesheet" href="https://js.arcgis.com/4.30/esri/themes/dark/main.css" />
@@ -244,6 +275,7 @@
 </style>
 </head>
 <body>
+<noscript><p style="color:#e8eef3;padding:16px;font-family:sans-serif">Italy Flood Vulnerability Map: an interactive flood risk map of Italy built with the Analytical Hierarchy Process (AHP). Please enable JavaScript to view the map.</p></noscript>
 
 <div id="loader">
   <div class="ripple" aria-hidden="true"></div>
@@ -256,6 +288,7 @@
     <div class="mark" aria-hidden="true">≈</div>
     <div>
       <h1 id="appTitle">Italy Flood Vulnerability Map</h1>
+      <div class="sub">Flood risk index for Italy · 10 criteria · AHP</div>
     </div>
     <div class="spacer"></div>
     <button class="hbtn" id="panelToggle" aria-controls="panel" aria-expanded="false">Layers ☰</button>
@@ -308,6 +341,16 @@
         <h2>Legend — visible layers</h2>
         <div class="card" id="legendWrap"><div id="customLegend"></div><div id="legendDiv"></div></div>
       </div>
+
+      <section class="section" id="aboutStudy">
+        <h2>About this flood vulnerability map</h2>
+        <div class="card">
+          <p class="hint" style="margin-top:0">This interactive map shows a <strong>Flood Vulnerability Index for Italy</strong>, highlighting where communities and buildings are most exposed to flood risk. The index combines 10 criteria using the <strong>Analytical Hierarchy Process (AHP)</strong>, a multi-criteria decision method, and the results were validated against a database of flood fatality locations in Italy (FFEM-DB).</p>
+          <p class="hint"><strong>Criteria:</strong> elevation (DEM), slope, flow accumulation, drainage density, Topographic Wetness Index, mean annual precipitation, land use / land cover, proximity to the coastline, distance from rivers and waterbodies, and 100-year river flood hazard.</p>
+          <p class="hint"><strong>Data sources:</strong> European Environment Agency, JRC River Flood Hazard Maps for Europe, ESA WorldCover, Esri Land Cover, LandScan Global, WorldClim 2, EUBUCCO building footprints and FFEM-DB.</p>
+          <p class="hint">Created by <a href="https://ayodelemichaelagbo.wixsite.com/info" style="color:var(--water)">Ayodele Michael Agboola</a>, GIS and geospatial analyst.</p>
+        </div>
+      </section>
 
     </aside>
 
@@ -645,7 +688,7 @@ require([
       if (CONFIG.DARK_BASEMAP) webmap.basemap = CONFIG.DARK_BASEMAP;
 
       const item = webmap.portalItem;
-      if (item?.title) { $("appTitle").textContent = item.title; document.title = item.title + " — Dashboard"; }
+      if (item?.title) { $("appTitle").textContent = item.title; }
 
       identifyLayers();
       applyLandingVisibility();
